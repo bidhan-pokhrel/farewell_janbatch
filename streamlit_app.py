@@ -11,7 +11,7 @@ model = joblib.load("rf_model.pkl")
 data = pd.read_csv("classificationDataset.csv")
 
 # Prepare categorical encoders
-datanonnumeric = data.drop(columns=["Age"])
+datanonnumeric = data.drop(columns=["Age", "Recurred"])
 categorical_columns = datanonnumeric.columns.tolist()
 
 # Build encoders
@@ -44,16 +44,21 @@ if st.button("Predict"):
     for col in categorical_columns:
         input_df[col] = input_df[col].map(inverse_encoders[col])
 
-    # Scale the input
-    full_data = data.drop(columns="Recurred")
-    scaler = StandardScaler().fit(full_data)
+    # Scaling the input, ensure scaler is loaded once
+    scaler = StandardScaler().fit(data[categorical_columns + ["Age"]])  # Fit the scaler on the original dataset
     input_scaled = scaler.transform(input_df[categorical_columns + ["Age"]])
 
     # Predict
     prediction = model.predict(input_scaled)
 
-    # Show prediction only if it's "Recurred"
+    # Optionally: Predict probability
+    probability = model.predict_proba(input_scaled)[:, 1]
+
+    # Show prediction and probability
     if prediction[0] == 1:
-        st.subheader("⚠️ Prediction: Recurred")
+        st.subheader("⚠️ Prediction: Cancer Recurrence")
+        st.write(f"Probability of recurrence: {probability[0]:.2f}")
     else:
-        st.subheader("✅ No recurrence detected")
+        st.subheader("✅ Prediction: No Recurrence")
+        st.write(f"Probability of no recurrence: {1 - probability[0]:.2f}")
+
