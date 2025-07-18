@@ -7,53 +7,61 @@ from sklearn.preprocessing import StandardScaler
 # Load the trained model
 model = joblib.load("rf_model.pkl")
 
-# Load the original dataset for encoding info
+# Load original dataset to extract structure
 data = pd.read_csv("classificationDataset.csv")
 
-# Prepare categorical encoders
-datanonnumeric = data.drop(columns=["Age"])
-categorical_columns = datanonnumeric.columns.tolist()
+# Drop target column to prepare encoding/scaling like during training
+X_full = data.drop(columns=["Recurred"])
+categorical_cols = X_full.drop(columns=["Age"]).columns.tolist()
 
-# Build encoders
-category_encoders = {
+# Encode categorical columns as category codes
+X_encoded = X_full.copy()
+for col in categorical_cols:
+    X_encoded[col] = X_encoded[col].astype("category").cat.codes
+
+# Fit the scaler on the encoded full dataset
+scaler = StandardScaler()
+scaler.fit(X_encoded)
+
+# Build label encoders from original data
+category_mappings = {
     col: dict(enumerate(data[col].astype("category").cat.categories))
-    for col in categorical_columns
+    for col in categorical_cols
 }
-inverse_encoders = {
-    col: {v: k for k, v in enc.items()} for col, enc in category_encoders.items()
+inverse_mappings = {
+    col: {v: k for k, v in mapping.items()} for col, mapping in category_mappings.items()
 }
 
-# Streamlit UI
+# Streamlit App
 st.title("Recurrent Cancer Prediction")
-st.write("Enter patient information to predict if cancer **recurred**.")
+st.write("Enter patient data to predict if cancer **recurred**.")
 
-# Input form
+# Collect user input
 user_input = {}
-for col in categorical_columns:
-    options = list(category_encoders[col].values())
+for col in categorical_cols:
+    options = list(inverse_mappings[col].keys())
     user_input[col] = st.selectbox(f"{col}", options)
 
 age = st.number_input("Age", min_value=0, max_value=120, value=50)
 
+# When user clicks predict
 if st.button("Predict"):
-    # Build DataFrame from input
+    # Encode input using same encoding as training
     input_df = pd.DataFrame([user_input])
+    for col in categorical_cols:
+        input_df[col] = input_df[col].map(inverse_mappings[col])
+    
     input_df["Age"] = age
-
-    # Encode categorical data
-    for col in categorical_columns:
-        input_df[col] = input_df[col].map(inverse_encoders[col])
+    input_df = input_df[categorical_cols + ["Age"]]  # Maintain column order
 
     # Scale the input
-    full_data = data.drop(columns="Recurred")
-    scaler = StandardScaler().fit(full_data)
-    input_scaled = scaler.transform(input_df[categorical_columns + ["Age"]])
+    input_scaled = scaler.transform(input_df)
 
     # Predict
     prediction = model.predict(input_scaled)
 
-    # Show prediction only if it's "Recurred"
+    # Show result only if recurrence is predicted
     if prediction[0] == 1:
-        st.subheader("⚠️ Prediction: Recurred")
+        st.error("⚠️ Prediction: Cancer Recurred")
     else:
-        st.subheader("✅ No recurrence detected")
+        st.success("✅ Prediction: No Recurrence")
