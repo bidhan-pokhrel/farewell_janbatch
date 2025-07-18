@@ -1,72 +1,79 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
 import joblib
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 
 # Load the trained model
 model = joblib.load("rf_model.pkl")
 
-# Load original dataset to extract structure
-data = pd.read_csv("classificationDataset.csv")
+# Load label encoders for categorical variables (if you used them)
+# These should be saved before in your model code if you used them
+# For example, for "Gender", "Smoking", etc.
+gender_encoder = joblib.load("gender_encoder.pkl")  # Assuming this is saved earlier
 
-# Drop target column to prepare encoding/scaling like during training
-X_full = data.drop(columns=["Recurred"])
-categorical_cols = X_full.drop(columns=["Age"]).columns.tolist()
+# Function to make a prediction
+def predict(input_data):
+    # Standardize the input data (assuming model expects scaled data)
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform([input_data])
 
-# Encode categorical columns as category codes
-X_encoded = X_full.copy()
-for col in categorical_cols:
-    X_encoded[col] = X_encoded[col].astype("category").cat.codes
+    # Predict using the model
+    prediction = model.predict(scaled_data)
+    return prediction[0]
 
-# Fit the scaler on the encoded full dataset
-scaler = StandardScaler()
-scaler.fit(X_encoded)
+# Streamlit user interface
+st.title("Thyroid Recurrence Prediction")
 
-# Build label encoders from original data
-category_mappings = {
-    col: dict(enumerate(data[col].astype("category").cat.categories))
-    for col in categorical_cols
-}
-inverse_mappings = {
-    col: {v: k for k, v in mapping.items()} for col, mapping in category_mappings.items()
-}
+# Collect user inputs
+age = st.number_input("Age", min_value=18, max_value=100, value=30)
+gender = st.selectbox("Gender", ("Female", "Male"))
+smoking = st.selectbox("Smoking", ("Yes", "No"))
+hx_smoking = st.selectbox("History of Smoking", ("Yes", "No"))
+hx_radiotherapy = st.selectbox("History of Radiotherapy", ("Yes", "No"))
+thyroid_function = st.selectbox("Thyroid Function", ("Euthyroid", "Clinical Hyperthyroidism"))
 
-# Streamlit App
-st.title("Recurrent Cancer Prediction")
-st.write("Enter patient data to predict if cancer **recurred**.")
+# Physical examination (left or right)
+physical_examination = st.selectbox("Physical Examination", ("Single nodular goiter-left", "Single nodular goiter-right", "Multinodular goiter"))
 
-# Collect user input
-user_input = {}
-for col in categorical_cols:
-    options = list(inverse_mappings[col].keys())
-    user_input[col] = st.selectbox(f"{col}", options)
+# Pathology type
+pathology = st.selectbox("Pathology", ("Micropapillary", "Other"))
 
-age = st.number_input("Age", min_value=0, max_value=120, value=50)
+# Focality (uni or multi-focal)
+focality = st.selectbox("Focality", ("Uni-Focal", "Multi-Focal"))
 
-# When user clicks predict
-if st.button("Predict"):
-    # Encode input using same encoding as training
-    input_df = pd.DataFrame([user_input])
+# Risk level
+risk = st.selectbox("Risk", ("Low", "High"))
 
-    # Map categorical input values to numerical codes
-    for col in categorical_cols:
-        input_df[col] = input_df[col].map(inverse_mappings[col])
+# Tumor, Nodes, Metastasis and Stage
+t = st.selectbox("T", ("T1a", "T1b", "T2", "T3", "T4"))
+n = st.selectbox("N", ("N0", "N1", "N2", "N3"))
+m = st.selectbox("M", ("M0", "M1"))
+stage = st.selectbox("Stage", ("I", "II", "III", "IV"))
 
-    # Add the 'Age' column to the input data
-    input_df["Age"] = age
+# Collect all inputs into a list (or pandas DataFrame)
+input_data = [
+    age,
+    gender_encoder.transform([gender])[0],  # Encoding gender
+    smoking == "Yes",
+    hx_smoking == "Yes",
+    hx_radiotherapy == "Yes",
+    thyroid_function == "Euthyroid",
+    1 if "left" in physical_examination else 0,  # Left=1, Right=0
+    pathology == "Micropapillary",  # assuming binary classification for pathology
+    1 if focality == "Multi-Focal" else 0,  # Uni-Focal=0, Multi-Focal=1
+    1 if risk == "High" else 0,  # High=1, Low=0
+    1 if t == "T1a" else 0,  # Simplified encoding for T (more detailed encoding could be done)
+    1 if n == "N0" else 0,  # Similarly for N
+    1 if m == "M0" else 0,  # Similarly for M
+    1 if stage == "I" else 0,  # Stage I=1, others=0
+]
 
-    # Make sure the input DataFrame is in the same column order as the training data
-    input_df = input_df[categorical_cols + ["Age"]]  # Ensures correct column order
-
-    # Scale the input using the same scaler
-    input_scaled = scaler.transform(input_df)
-
-    # Predict
-    prediction = model.predict(input_scaled)
-
-    # Show result only if recurrence is predicted
-    if prediction[0] == 1:
-        st.error("⚠️ Prediction: Cancer Recurred")
+# Button to make prediction
+if st.button("Predict Recurrence"):
+    prediction = predict(input_data)
+    if prediction == 0:
+        st.write("Prediction: No recurrence.")
     else:
-        st.success("✅ Prediction: No Recurrence")
+        st.write("Prediction: Recurrence likely.")
