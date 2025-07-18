@@ -48,13 +48,18 @@ age = st.number_input("Age", min_value=0, max_value=120, value=50)
 if st.button("Predict"):
     # Encode input using same encoding as training
     input_df = pd.DataFrame([user_input])
+
+    # Map categorical input values to numerical codes
     for col in categorical_cols:
         input_df[col] = input_df[col].map(inverse_mappings[col])
-    
-    input_df["Age"] = age
-    input_df = input_df[categorical_cols + ["Age"]]  # Maintain column order
 
-    # Scale the input
+    # Add the 'Age' column to the input data
+    input_df["Age"] = age
+
+    # Make sure the input DataFrame is in the same column order as the training data
+    input_df = input_df[categorical_cols + ["Age"]]  # Ensures correct column order
+
+    # Scale the input using the same scaler
     input_scaled = scaler.transform(input_df)
 
     # Predict
